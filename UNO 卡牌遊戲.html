@@ -1,0 +1,1562 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UNO 卡牌遊戲</title>
+<style>
+/* ===== 重置與基礎 ===== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --red: #d32f2f;
+  --yellow: #f9a825;
+  --green: #2e7d32;
+  --blue: #1565c0;
+  --dark: #1a1a2e;
+  --gold: #ffd700;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+  background: radial-gradient(ellipse at center, #1e6b3a 0%, #0d3b1e 70%, #061a0d 100%);
+  min-height: 100vh;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ===== 遊戲桌面 ===== */
+#game-table {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ===== AI 玩家區域 ===== */
+.ai-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  position: absolute;
+  z-index: 5;
+}
+
+.ai-player.top { top: 10px; left: 50%; transform: translateX(-50%); }
+.ai-player.left { left: 10px; top: 50%; transform: translateY(-50%); }
+.ai-player.right { right: 10px; top: 50%; transform: translateY(-50%); }
+
+.player-name {
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  padding: 4px 14px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: bold;
+  white-space: nowrap;
+  border: 2px solid transparent;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.player-name.active {
+  border-color: var(--gold);
+  box-shadow: 0 0 15px rgba(255,215,0,0.6);
+}
+
+.ai-hand {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.ai-hand.left, .ai-hand.right {
+  flex-direction: column;
+}
+
+/* ===== 卡牌背面 (AI 手牌) ===== */
+.card-back {
+  width: 40px;
+  height: 60px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  border: 2px solid #e94560;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  color: #e94560;
+  position: relative;
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+
+.card-back::before {
+  content: "UNO";
+  transform: rotate(-25deg);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+}
+
+.ai-hand.left .card-back, .ai-hand.right .card-back {
+  width: 60px;
+  height: 40px;
+}
+
+/* ===== 中央區域 ===== */
+.center-area {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  margin: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.pile-label {
+  text-align: center;
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.draw-pile, .discard-pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ===== 卡牌通用樣式 ===== */
+.card {
+  width: 80px;
+  height: 120px;
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+  transition: transform 0.2s, margin 0.2s;
+  overflow: hidden;
+}
+
+.card-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card-oval {
+  position: absolute;
+  width: 70%;
+  height: 90%;
+  border-radius: 50%;
+  background: #fff;
+  transform: rotate(-20deg);
+  top: 5%;
+  left: 15%;
+}
+
+.card-center-value {
+  position: relative;
+  z-index: 2;
+  font-size: 38px;
+  font-weight: 900;
+  font-family: 'Arial Black', sans-serif;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.2);
+}
+
+.card-corner {
+  position: absolute;
+  font-size: 16px;
+  font-weight: 900;
+  font-family: 'Arial Black', sans-serif;
+  z-index: 2;
+  line-height: 1;
+}
+
+.card-corner.tl { top: 6px; left: 8px; }
+.card-corner.br { bottom: 6px; right: 8px; transform: rotate(180deg); }
+
+/* 卡牌顏色 */
+.card[data-color="red"] .card-inner { background: var(--red); }
+.card[data-color="yellow"] .card-inner { background: var(--yellow); }
+.card[data-color="green"] .card-inner { background: var(--green); }
+.card[data-color="blue"] .card-inner { background: var(--blue); }
+.card[data-color="wild"] .card-inner { background: #1a1a2e; }
+
+.card[data-color="red"] .card-center-value,
+.card[data-color="red"] .card-corner { color: var(--red); }
+.card[data-color="yellow"] .card-center-value,
+.card[data-color="yellow"] .card-corner { color: var(--yellow); }
+.card[data-color="green"] .card-center-value,
+.card[data-color="green"] .card-corner { color: var(--green); }
+.card[data-color="blue"] .card-center-value,
+.card[data-color="blue"] .card-corner { color: var(--blue); }
+.card[data-color="wild"] .card-center-value,
+.card[data-color="wild"] .card-corner { color: #fff; }
+
+/* Wild 卡的四色圓 */
+.wild-quadrants {
+  position: absolute;
+  width: 70%;
+  height: 90%;
+  border-radius: 50%;
+  transform: rotate(-20deg);
+  top: 5%;
+  left: 15%;
+  overflow: hidden;
+  z-index: 1;
+}
+.wild-quadrants::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, var(--red) 50%, var(--blue) 50%),
+    linear-gradient(90deg, var(--yellow) 50%, var(--green) 50%);
+  background-size: 100% 50%, 100% 50%;
+  background-position: 0 0, 0 100%;
+  background-repeat: no-repeat;
+}
+
+/* Draw Pile 卡背 */
+.draw-pile .card {
+  cursor: pointer;
+}
+
+.draw-pile .card .card-inner {
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  border: 3px solid #e94560;
+  justify-content: center;
+}
+
+.draw-pile .card .card-inner::after {
+  content: "UNO";
+  color: #e94560;
+  font-size: 22px;
+  font-weight: bold;
+  transform: rotate(-25deg);
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+/* ===== 玩家手牌區 ===== */
+.player-hand-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 10px;
+  width: 100%;
+  overflow: visible;
+  z-index: 10;
+}
+
+.player-hand {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  min-height: 140px;
+  padding: 0 20px;
+  flex-wrap: nowrap;
+}
+
+.player-hand .card {
+  margin-left: -30px;
+  transition: transform 0.2s, margin 0.2s;
+}
+
+.player-hand .card:first-child {
+  margin-left: 0;
+}
+
+.player-hand .card:hover.playable {
+  transform: translateY(-20px);
+  z-index: 100;
+}
+
+.player-hand .card.playable {
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(255,215,0,0.5);
+}
+
+.player-hand .card:not(.playable) {
+  opacity: 0.6;
+  cursor: default;
+  filter: grayscale(30%);
+}
+
+.player-hand .card.played-anim {
+  animation: cardPlay 0.4s ease-out forwards;
+}
+
+@keyframes cardPlay {
+  0% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-60px) scale(1.1); }
+  100% { transform: translateY(-200px) scale(0.5); opacity: 0; }
+}
+
+@keyframes cardDraw {
+  from { transform: translateY(-100px) scale(0.5); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.card-draw-anim {
+  animation: cardDraw 0.3s ease-out;
+}
+
+/* ===== 方向指示器 ===== */
+.direction-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 200px;
+  height: 200px;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.15;
+}
+
+.direction-indicator svg {
+  width: 100%;
+  height: 100%;
+  transition: transform 0.5s;
+}
+
+/* ===== 顏色選擇器 ===== */
+.color-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.color-picker-overlay.show {
+  display: flex;
+}
+
+.color-picker {
+  background: rgba(20,20,40,0.95);
+  padding: 30px 40px;
+  border-radius: 20px;
+  text-align: center;
+  border: 2px solid rgba(255,255,255,0.1);
+}
+
+.color-picker h3 {
+  color: #fff;
+  margin-bottom: 20px;
+  font-size: 20px;
+}
+
+.color-options {
+  display: flex;
+  gap: 15px;
+}
+
+.color-option {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 3px solid transparent;
+  transition: transform 0.2s, border-color 0.2s;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+}
+
+.color-option:hover {
+  transform: scale(1.15);
+  border-color: var(--gold);
+}
+
+.color-option[data-color="red"] { background: var(--red); }
+.color-option[data-color="yellow"] { background: var(--yellow); }
+.color-option[data-color="green"] { background: var(--green); }
+.color-option[data-color="blue"] { background: var(--blue); }
+
+/* ===== 訊息區 ===== */
+#message-bar {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.8);
+  color: #fff;
+  padding: 10px 30px;
+  border-radius: 25px;
+  font-size: 16px;
+  font-weight: bold;
+  z-index: 500;
+  border: 1px solid rgba(255,255,255,0.2);
+  min-width: 200px;
+  text-align: center;
+  transition: opacity 0.3s;
+}
+
+/* ===== UNO 按鈕 ===== */
+#uno-btn {
+  position: fixed;
+  bottom: 160px;
+  right: 30px;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #e94560 0%, #c62828 100%);
+  color: #fff;
+  border: 3px solid #ffd700;
+  font-size: 22px;
+  font-weight: 900;
+  cursor: pointer;
+  z-index: 100;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Arial Black', sans-serif;
+  transition: transform 0.2s, box-shadow 0.2s;
+  animation: unoPulse 1s infinite;
+}
+
+#uno-btn.show {
+  display: flex;
+}
+
+#uno-btn:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(255,215,0,0.5);
+}
+
+@keyframes unoPulse {
+  0%, 100% { box-shadow: 0 4px 15px rgba(0,0,0,0.5), 0 0 0 0 rgba(255,215,0,0.4); }
+  50% { box-shadow: 0 4px 15px rgba(0,0,0,0.5), 0 0 0 12px rgba(255,215,0,0); }
+}
+
+/* ===== 新遊戲按鈕 ===== */
+#new-game-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 8px 16px;
+  border-radius: 15px;
+  font-size: 13px;
+  cursor: pointer;
+  z-index: 500;
+  font-weight: bold;
+  transition: background 0.2s;
+}
+
+#new-game-btn:hover {
+  background: rgba(0,0,0,0.9);
+}
+
+/* ===== 勝利畫面 ===== */
+.win-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.win-overlay.show {
+  display: flex;
+}
+
+.win-box {
+  text-align: center;
+  padding: 50px 80px;
+  border-radius: 30px;
+  background: linear-gradient(135deg, rgba(30,107,58,0.95), rgba(13,59,30,0.95));
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 50px rgba(255,215,0,0.3);
+}
+
+.win-box h1 {
+  color: var(--gold);
+  font-size: 48px;
+  margin-bottom: 15px;
+  font-family: 'Arial Black', sans-serif;
+  text-shadow: 3px 3px 0 rgba(0,0,0,0.3);
+}
+
+.win-box p {
+  color: #fff;
+  font-size: 20px;
+  margin-bottom: 30px;
+}
+
+.win-box button {
+  background: var(--gold);
+  color: #1a1a2e;
+  border: none;
+  padding: 12px 40px;
+  border-radius: 25px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.win-box button:hover {
+  transform: scale(1.05);
+}
+
+/* ===== 卡牌彈出動畫 (打出去) ===== */
+@keyframes flyToCenter {
+  0% { transform: scale(1) translate(0,0); opacity: 1; }
+  100% { transform: scale(0.8) translate(var(--fly-x), var(--fly-y)); opacity: 0.8; }
+}
+
+/* 響應式 */
+@media (max-width: 768px) {
+  .card { width: 55px; height: 82px; }
+  .card-center-value { font-size: 26px; }
+  .card-corner { font-size: 11px; }
+  .player-hand .card { margin-left: -20px; }
+  .card-back { width: 28px; height: 42px; }
+  .ai-hand.left .card-back, .ai-hand.right .card-back { width: 42px; height: 28px; }
+  #uno-btn { width: 55px; height: 55px; font-size: 18px; bottom: 110px; right: 15px; }
+}
+</style>
+</head>
+<body>
+
+<div id="game-table">
+  <!-- 方向指示器 -->
+  <div class="direction-indicator" id="direction-indicator">
+    <svg viewBox="0 0 200 200">
+      <path d="M100,20 A80,80 0 1,1 20,100" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="8,6"/>
+      <polygon points="20,100 30,85 30,115" fill="#fff"/>
+      <polygon points="100,20 85,30 115,30" fill="#fff"/>
+    </svg>
+  </div>
+
+  <!-- AI 玩家 -->
+  <div class="ai-player top" id="player-2">
+    <div class="player-name" id="name-2">電腦 2</div>
+    <div class="ai-hand" id="hand-2"></div>
+  </div>
+
+  <div class="ai-player left" id="player-1">
+    <div class="player-name" id="name-1">電腦 1</div>
+    <div class="ai-hand" id="hand-1"></div>
+  </div>
+
+  <div class="ai-player right" id="player-3">
+    <div class="player-name" id="name-3">電腦 3</div>
+    <div class="ai-hand" id="hand-3"></div>
+  </div>
+
+  <!-- 中央區域 -->
+  <div class="center-area">
+    <div class="draw-pile">
+      <div class="card" id="draw-card" onclick="onDrawClick()">
+        <div class="card-inner"></div>
+      </div>
+      <div class="pile-label">抽牌堆</div>
+    </div>
+    <div class="discard-pile">
+      <div id="discard-card-container"></div>
+      <div class="pile-label">棄牌堆</div>
+    </div>
+  </div>
+
+  <!-- 玩家手牌 -->
+  <div class="player-hand-area">
+    <div class="player-name" id="name-0" style="margin-bottom: 5px;">你</div>
+    <div class="player-hand" id="hand-0"></div>
+  </div>
+</div>
+
+<!-- 訊息列 -->
+<div id="message-bar">遊戲開始！</div>
+
+<!-- 新遊戲按鈕 -->
+<button id="new-game-btn" onclick="startNewGame()">新遊戲</button>
+
+<!-- UNO 按鈕 -->
+<button id="uno-btn" onclick="callUno()">UNO!</button>
+
+<!-- 顏色選擇器 -->
+<div class="color-picker-overlay" id="color-picker-overlay">
+  <div class="color-picker">
+    <h3>選擇一個顏色</h3>
+    <div class="color-options">
+      <div class="color-option" data-color="red" onclick="selectColor('red')"></div>
+      <div class="color-option" data-color="yellow" onclick="selectColor('yellow')"></div>
+      <div class="color-option" data-color="green" onclick="selectColor('green')"></div>
+      <div class="color-option" data-color="blue" onclick="selectColor('blue')"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 勝利畫面 -->
+<div class="win-overlay" id="win-overlay">
+  <div class="win-box">
+    <h1 id="win-title">恭喜！</h1>
+    <p id="win-message">你贏了！</p>
+    <button onclick="startNewGame()">再玩一次</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// 遊戲資料模型
+// ============================================================
+const COLORS = ['red', 'yellow', 'green', 'blue'];
+const COLOR_NAMES = { red: '紅色', yellow: '黃色', green: '綠色', blue: '藍色' };
+const PLAYER_NAMES = ['你', '電腦 1', '電腦 2', '電腦 3'];
+
+let state = {
+  players: [[], [], [], []],   // 每位玩家的手牌
+  deck: [],
+  discardPile: [],
+  currentPlayer: 0,
+  direction: 1,                // 1 = 順時針, -1 = 逆時針
+  currentColor: null,         // 當前要出的顏色
+  isBusy: false,               // 防止重複操作
+  gameOver: false,
+  pendingWildCard: null,       // 等待選顏色的 Wild 卡
+  unoCalled: [false, false, false, false], // 是否已喊 UNO
+  drawnThisTurn: false,        // 本回合是否已抽過牌
+};
+
+// ============================================================
+// 建立牌堆
+// ============================================================
+function createDeck() {
+  const deck = [];
+  for (const color of COLORS) {
+    // 數字牌：0 一張, 1-9 各兩張
+    deck.push({ color, type: 'number', value: 0 });
+    for (let v = 1; v <= 9; v++) {
+      deck.push({ color, type: 'number', value: v });
+      deck.push({ color, type: 'number', value: v });
+    }
+    // 功能牌各兩張
+    for (let i = 0; i < 2; i++) {
+      deck.push({ color, type: 'skip', value: null });
+      deck.push({ color, type: 'reverse', value: null });
+      deck.push({ color, type: 'draw2', value: null });
+    }
+  }
+  // Wild 卡各 4 張
+  for (let i = 0; i < 4; i++) {
+    deck.push({ color: 'wild', type: 'wild', value: null });
+    deck.push({ color: 'wild', type: 'wild4', value: null });
+  }
+  return deck;
+}
+
+// ============================================================
+// 洗牌
+// ============================================================
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ============================================================
+// 判斷是否能出這張牌
+// ============================================================
+function canPlay(card) {
+  const top = state.discardPile[state.discardPile.length - 1];
+  if (!top) return true;
+  if (card.color === 'wild') return true;
+  if (card.color === state.currentColor) return true;
+  if (card.type === 'number' && top.type === 'number' && card.value === top.value) return true;
+  if (card.type !== 'number' && card.type === top.type) return true;
+  return false;
+}
+
+// ============================================================
+// 抽一張牌
+// ============================================================
+function drawFromDeck() {
+  if (state.deck.length === 0) {
+    // 回收棄牌堆（保留最上面一張）
+    if (state.discardPile.length <= 1) return null;
+    const top = state.discardPile.pop();
+    state.deck = shuffle(state.discardPile);
+    state.discardPile = [top];
+  }
+  return state.deck.pop();
+}
+
+// ============================================================
+// 出牌
+// ============================================================
+function playCard(playerIdx, cardIdx) {
+  if (state.isBusy || state.gameOver) return;
+  if (playerIdx !== state.currentPlayer) return;
+
+  const card = state.players[playerIdx][cardIdx];
+  if (!card || !canPlay(card)) return;
+
+  state.isBusy = true;
+
+  // Wild 卡需要選顏色
+  if (card.color === 'wild') {
+    state.pendingWildCard = { playerIdx, cardIdx, card };
+    showColorPicker();
+    return;
+  }
+
+  executePlayCard(playerIdx, cardIdx, card, null);
+}
+
+function executePlayCard(playerIdx, cardIdx, card, chosenColor) {
+  // 從手牌移除
+  state.players[playerIdx].splice(cardIdx, 1);
+  state.discardPile.push(card);
+  state.currentColor = chosenColor || card.color;
+  state.drawnThisTurn = false;
+
+  // UNO 檢查
+  if (state.players[playerIdx].length === 1) {
+    if (!state.unoCalled[playerIdx]) {
+      // AI 自動喊 UNO
+      if (playerIdx !== 0) {
+        state.unoCalled[playerIdx] = true;
+        showMessage(PLAYER_NAMES[playerIdx] + ' 喊了 UNO！');
+      }
+    }
+  }
+
+  // 檢查勝利
+  if (state.players[playerIdx].length === 0) {
+    endGame(playerIdx);
+    return;
+  }
+
+  // 重置 UNO 狀態
+  if (state.players[playerIdx].length > 1) {
+    state.unoCalled[playerIdx] = false;
+  }
+
+  renderAll();
+
+  // 套用卡牌效果
+  setTimeout(() => {
+    applyCardEffect(card, playerIdx);
+  }, 400);
+}
+
+// ============================================================
+// 卡牌效果
+// ============================================================
+function applyCardEffect(card, playerIdx) {
+  let skipNext = 0;
+
+  switch (card.type) {
+    case 'skip':
+      skipNext = 1;
+      showMessage(PLAYER_NAMES[playerIdx] + ' 出了 Skip！跳過下一位');
+      break;
+    case 'reverse':
+      state.direction *= -1;
+      showMessage(PLAYER_NAMES[playerIdx] + ' 出了反轉！方向改變');
+      updateDirectionIndicator();
+      // 4 人時，reverse 不跳過
+      break;
+    case 'draw2':
+      const nextP2 = getNextPlayer(playerIdx);
+      drawCards(nextP2, 2);
+      skipNext = 1;
+      showMessage(PLAYER_NAMES[playerIdx] + ' 出了 +2！' + PLAYER_NAMES[nextP2] + ' 抽 2 張');
+      break;
+    case 'wild':
+      showMessage(PLAYER_NAMES[playerIdx] + ' 出了 Wild！顏色：' + COLOR_NAMES[state.currentColor]);
+      break;
+    case 'wild4':
+      const nextP4 = getNextPlayer(playerIdx);
+      drawCards(nextP4, 4);
+      skipNext = 1;
+      showMessage(PLAYER_NAMES[playerIdx] + ' 出了 +4！' + PLAYER_NAMES[nextP4] + ' 抽 4 張');
+      break;
+  }
+
+  renderAll();
+
+  setTimeout(() => {
+    nextTurn(skipNext);
+  }, 600);
+}
+
+// ============================================================
+// 取得下一位玩家
+// ============================================================
+function getNextPlayer(from = state.currentPlayer) {
+  return (from + state.direction + 4) % 4;
+}
+
+// ============================================================
+// 下一回合
+// ============================================================
+function nextTurn(skip = 0) {
+  state.currentPlayer = (state.currentPlayer + state.direction * (1 + skip) + 4) % 4;
+  state.drawnThisTurn = false;
+  state.isBusy = false;
+  renderAll();
+
+  if (state.currentPlayer !== 0 && !state.gameOver) {
+    setTimeout(() => aiTurn(state.currentPlayer), 800);
+  } else if (!state.gameOver) {
+    showMessage('輪到你了');
+    checkUnoButton();
+  }
+}
+
+// ============================================================
+// AI 回合
+// ============================================================
+function aiTurn(playerIdx) {
+  if (state.isBusy || state.gameOver) return;
+  state.isBusy = true;
+
+  const hand = state.players[playerIdx];
+  const playable = [];
+  for (let i = 0; i < hand.length; i++) {
+    if (canPlay(hand[i])) playable.push(i);
+  }
+
+  if (playable.length === 0) {
+    // 抽牌
+    const drawn = drawFromDeck();
+    if (drawn) {
+      state.players[playerIdx].push(drawn);
+      showMessage(PLAYER_NAMES[playerIdx] + ' 抽了一張牌');
+      renderAll();
+    }
+
+    setTimeout(() => {
+      // 抽完後如果能出就出
+      if (drawn && canPlay(drawn)) {
+        const cardIdx = state.players[playerIdx].length - 1;
+        if (drawn.color === 'wild') {
+          // AI 選顏色
+          const chosenColor = chooseAIColor(state.players[playerIdx]);
+          showMessage(PLAYER_NAMES[playerIdx] + ' 出了 Wild！顏色：' + COLOR_NAMES[chosenColor]);
+          executePlayCard(playerIdx, cardIdx, drawn, chosenColor);
+        } else {
+          executePlayCard(playerIdx, cardIdx, drawn, null);
+        }
+      } else {
+        nextTurn(0);
+      }
+    }, 700);
+    return;
+  }
+
+  // AI 出牌策略：優先出功能牌，再出數字牌，保留 Wild
+  let bestIdx = -1;
+  let priority = -1;
+
+  for (const idx of playable) {
+    const card = hand[idx];
+    let p = 0;
+    if (card.type === 'wild4') p = 0;
+    else if (card.type === 'wild') p = 1;
+    else if (card.type === 'draw2') p = 5;
+    else if (card.type === 'skip') p = 4;
+    else if (card.type === 'reverse') p = 3;
+    else p = 2; // 數字牌
+
+    if (p > priority) {
+      priority = p;
+      bestIdx = idx;
+    }
+  }
+
+  const card = hand[bestIdx];
+  if (card.color === 'wild') {
+    const chosenColor = chooseAIColor(state.players[playerIdx]);
+    showMessage(PLAYER_NAMES[playerIdx] + ' 出了 ' + getCardName(card) + '！顏色：' + COLOR_NAMES[chosenColor]);
+    executePlayCard(playerIdx, bestIdx, card, chosenColor);
+  } else {
+    showMessage(PLAYER_NAMES[playerIdx] + ' 出了 ' + getCardName(card));
+    executePlayCard(playerIdx, bestIdx, card, null);
+  }
+}
+
+// ============================================================
+// AI 選顏色（選手牌中最多的顏色）
+// ============================================================
+function chooseAIColor(hand) {
+  const counts = { red: 0, yellow: 0, green: 0, blue: 0 };
+  for (const c of hand) {
+    if (c.color !== 'wild') counts[c.color]++;
+  }
+  let best = 'red';
+  for (const c of COLORS) {
+    if (counts[c] > counts[best]) best = c;
+  }
+  return best;
+}
+
+// ============================================================
+// 抽牌給玩家
+// ============================================================
+function drawCards(playerIdx, count) {
+  for (let i = 0; i < count; i++) {
+    const card = drawFromDeck();
+    if (card) state.players[playerIdx].push(card);
+  }
+  state.unoCalled[playerIdx] = false;
+}
+
+// ============================================================
+// 玩家點擊抽牌堆
+// ============================================================
+function onDrawClick() {
+  if (state.isBusy || state.gameOver) return;
+  if (state.currentPlayer !== 0) return;
+
+  if (state.drawnThisTurn) {
+    showMessage('你已經抽過牌了，請出牌或跳過');
+    return;
+  }
+
+  state.isBusy = true;
+  const card = drawFromDeck();
+  if (card) {
+    state.players[0].push(card);
+    state.drawnThisTurn = true;
+    renderAll();
+
+    if (canPlay(card)) {
+      state.isBusy = false;
+      renderAll();
+      showMessage('你抽到了一張可出的牌！');
+    } else {
+      showMessage('你抽到了一張無法出的牌，跳過回合');
+      setTimeout(() => nextTurn(0), 800);
+    }
+  }
+}
+
+// ============================================================
+// UNO 按鈕
+// ============================================================
+function checkUnoButton() {
+  const btn = document.getElementById('uno-btn');
+  if (state.currentPlayer === 0 && state.players[0].length === 2 && !state.unoCalled[0]) {
+    btn.classList.add('show');
+  } else {
+    btn.classList.remove('show');
+  }
+}
+
+function callUno() {
+  if (state.players[0].length === 1 || state.players[0].length === 2) {
+    state.unoCalled[0] = true;
+    document.getElementById('uno-btn').classList.remove('show');
+    showMessage('你喊了 UNO！');
+  }
+}
+
+// ============================================================
+// 顏色選擇器
+// ============================================================
+function showColorPicker() {
+  document.getElementById('color-picker-overlay').classList.add('show');
+}
+
+function selectColor(color) {
+  document.getElementById('color-picker-overlay').classList.remove('show');
+  if (state.pendingWildCard) {
+    const { playerIdx, cardIdx, card } = state.pendingWildCard;
+    state.pendingWildCard = null;
+    state.currentColor = color;
+    executePlayCard(playerIdx, cardIdx, card, color);
+  }
+}
+
+// ============================================================
+// 遊戲結束
+// ============================================================
+function endGame(winnerIdx) {
+  state.gameOver = true;
+  state.isBusy = true;
+  renderAll();
+
+  const overlay = document.getElementById('win-overlay');
+  const title = document.getElementById('win-title');
+  const msg = document.getElementById('win-message');
+
+  if (winnerIdx === 0) {
+    title.textContent = '恭喜獲勝！';
+    msg.textContent = '你贏了這場 UNO！';
+  } else {
+    title.textContent = '遊戲結束';
+    msg.textContent = PLAYER_NAMES[winnerIdx] + ' 贏了！再試一次吧！';
+  }
+
+  overlay.classList.add('show');
+}
+
+// ============================================================
+// 開始新遊戲
+// ============================================================
+function startNewGame() {
+  state = {
+    players: [[], [], [], []],
+    deck: shuffle(createDeck()),
+    discardPile: [],
+    currentPlayer: 0,
+    direction: 1,
+    currentColor: null,
+    isBusy: false,
+    gameOver: false,
+    pendingWildCard: null,
+    unoCalled: [false, false, false, false],
+    drawnThisTurn: false,
+  };
+
+  document.getElementById('win-overlay').classList.remove('show');
+  document.getElementById('color-picker-overlay').classList.remove('show');
+  document.getElementById('uno-btn').classList.remove('show');
+
+  // 發牌
+  for (let i = 0; i < 7; i++) {
+    for (let p = 0; p < 4; p++) {
+      state.players[p].push(state.deck.pop());
+    }
+  }
+
+  // 翻第一張牌（找數字牌）
+  let firstCard;
+  do {
+    firstCard = state.deck.pop();
+    if (firstCard.type !== 'number') {
+      state.deck.push(firstCard);
+      state.deck = shuffle(state.deck);
+    }
+  } while (firstCard.type !== 'number');
+
+  state.discardPile.push(firstCard);
+  state.currentColor = firstCard.color;
+
+  showMessage('遊戲開始！輪到你了');
+  renderAll();
+  updateDirectionIndicator();
+}
+
+// ============================================================
+// 渲染：卡牌 HTML
+// ============================================================
+function renderCardHTML(card, isPlayable, cardIdx) {
+  const dataColor = card.color;
+  let centerHTML = '';
+  let cornerHTML = '';
+
+  if (card.type === 'number') {
+    centerHTML = card.value;
+    cornerHTML = card.value;
+  } else if (card.type === 'skip') {
+    centerHTML = '⊘';
+    cornerHTML = '⊘';
+  } else if (card.type === 'reverse') {
+    centerHTML = '↻';
+    cornerHTML = '↻';
+  } else if (card.type === 'draw2') {
+    centerHTML = '+2';
+    cornerHTML = '+2';
+  } else if (card.type === 'wild') {
+    centerHTML = '★';
+    cornerHTML = '';
+  } else if (card.type === 'wild4') {
+    centerHTML = '+4';
+    cornerHTML = '+4';
+  }
+
+  const wildQuadrants = card.color === 'wild' ? '<div class="wild-quadrants"></div>' : '';
+
+  const playableClass = isPlayable ? ' playable' : '';
+  const onclick = isPlayable && cardIdx !== undefined
+    ? `onclick="playCard(0, ${cardIdx})"`
+    : '';
+
+  return `
+    <div class="card${playableClass}" data-color="${dataColor}" ${onclick}>
+      <div class="card-inner">
+        ${wildQuadrants}
+        <div class="card-oval"></div>
+        ${cornerHTML ? `<div class="card-corner tl">${cornerHTML}</div>` : ''}
+        ${cornerHTML ? `<div class="card-corner br">${cornerHTML}</div>` : ''}
+        <div class="card-center-value">${centerHTML}</div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// 渲染所有
+// ============================================================
+function renderAll() {
+  // 渲染玩家手牌
+  const handEl = document.getElementById('hand-0');
+  let handHTML = '';
+  for (let i = 0; i < state.players[0].length; i++) {
+    const card = state.players[0][i];
+    const isMyTurn = state.currentPlayer === 0 && !state.isBusy && !state.gameOver;
+    const playable = isMyTurn && canPlay(card);
+    handHTML += renderCardHTML(card, playable, i);
+  }
+  handEl.innerHTML = handHTML;
+
+  // 渲染 AI 手牌（牌背）
+  for (let p = 1; p <= 3; p++) {
+    const el = document.getElementById('hand-' + p);
+    let html = '';
+    const count = state.players[p].length;
+    const showCount = Math.min(count, 8); // 最多顯示 8 張
+    for (let i = 0; i < showCount; i++) {
+      html += '<div class="card-back"></div>';
+    }
+    if (count > showCount) {
+      html += `<div class="card-back" style="font-size:11px;">+${count - showCount}</div>`;
+    }
+    el.innerHTML = html;
+  }
+
+  // 渲染棄牌堆最上面一張
+  const discardEl = document.getElementById('discard-card-container');
+  if (state.discardPile.length > 0) {
+    const topCard = state.discardPile[state.discardPile.length - 1];
+    // 如果是 Wild 且已選顏色，用選的顏色顯示邊框
+    let cardHTML = renderCardHTML(topCard, false, undefined);
+    if (topCard.color === 'wild' && state.currentColor) {
+      cardHTML = cardHTML.replace('data-color="wild"', `data-color="wild" style="border: 4px solid var(--${state.currentColor});"`);
+    }
+    discardEl.innerHTML = cardHTML;
+  }
+
+  // 更新玩家名稱（高亮當前玩家）
+  for (let p = 0; p < 4; p++) {
+    const nameEl = document.getElementById('name-' + p);
+    if (nameEl) {
+      nameEl.textContent = PLAYER_NAMES[p] + ' (' + state.players[p].length + ')';
+      if (p === state.currentPlayer && !state.gameOver) {
+        nameEl.classList.add('active');
+      } else {
+        nameEl.classList.remove('active');
+      }
+    }
+  }
+
+  checkUnoButton();
+}
+
+// ============================================================
+// 方向指示器
+// ============================================================
+function updateDirectionIndicator() {
+  const el = document.getElementById('direction-indicator');
+  const svg = el.querySelector('svg');
+  if (state.direction === 1) {
+    svg.style.transform = 'rotate(0deg)';
+  } else {
+    svg.style.transform = 'rotate(180deg)';
+  }
+}
+
+// ============================================================
+// 顯示訊息
+// ============================================================
+function showMessage(msg) {
+  const bar = document.getElementById('message-bar');
+  bar.textContent = msg;
+  bar.style.opacity = '1';
+  // 自動淡出
+  clearTimeout(window._msgTimer);
+  window._msgTimer = setTimeout(() => {
+    bar.style.opacity = '0.5';
+  }, 3000);
+}
+
+// ============================================================
+// 取得卡牌名稱
+// ============================================================
+function getCardName(card) {
+  if (card.type === 'number') return COLOR_NAMES[card.color] + card.value;
+  if (card.type === 'skip') return COLOR_NAMES[card.color] + ' Skip';
+  if (card.type === 'reverse') return COLOR_NAMES[card.color] + ' 反轉';
+  if (card.type === 'draw2') return COLOR_NAMES[card.color] + ' +2';
+  if (card.type === 'wild') return 'Wild';
+  if (card.type === 'wild4') return 'Wild +4';
+  return '';
+}
+
+// ============================================================
+// 初始化
+// ============================================================
+startNewGame();
+</script>
+
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  const DEFAULT_LINE_HEIGHT = 16;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_BY") {
+      const { deltaX, deltaY, deltaMode } = event.data;
+      if (!scrollForwarding || !Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+      if (deltaMode !== 0 && deltaMode !== 1 && deltaMode !== 2) return;
+      const lineHeight =
+        parseFloat(getComputedStyle(document.documentElement).lineHeight) || DEFAULT_LINE_HEIGHT;
+      const scaleX = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerWidth : 1;
+      const scaleY = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerHeight : 1;
+      // The selection overlay receives the wheel event instead of this iframe.
+      // Instant scrolling preserves trackpad deltas even on smooth-scroll sites.
+      window.scrollBy({ left: deltaX * scaleX, top: deltaY * scaleY, behavior: "instant" });
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+
+</script></body>
+</html>
